@@ -3,28 +3,31 @@ import sqlite3
 from datetime import datetime
 import pandas as pd
 
-# =========================================================
-# SAFDAR GARMENTS POS - SINGLE FILE APP
-# =========================================================
+# =====================================================
+# SAFDAR GARMENTS POS
+# =====================================================
 
 st.set_page_config(
     page_title="Safdar Garments POS",
     page_icon="👕",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-DB = "safdar_garments.db"
+DB_FILE = "safdar_garments_pos.db"
 
-# =========================================================
+
+# =====================================================
 # DATABASE
-# =========================================================
+# =====================================================
 
-def db():
-    return sqlite3.connect(DB, check_same_thread=False)
+def get_conn():
+    return sqlite3.connect(DB_FILE, check_same_thread=False)
 
 
-def setup_database():
-    conn = db()
+def init_db():
+
+    conn = get_conn()
     cur = conn.cursor()
 
     cur.execute("""
@@ -35,58 +38,64 @@ def setup_database():
             size TEXT NOT NULL,
             color TEXT NOT NULL,
             price REAL NOT NULL,
-            stock INTEGER NOT NULL
+            stock INTEGER NOT NULL DEFAULT 0
         )
     """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS sales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice TEXT,
+            invoice_no TEXT NOT NULL,
             customer TEXT,
-            phone TEXT,
-            address TEXT,
-            payment TEXT,
-            payment_number TEXT,
-            total REAL,
-            seller TEXT,
-            date TEXT
+            subtotal REAL NOT NULL,
+            discount REAL NOT NULL,
+            total REAL NOT NULL,
+            payment TEXT NOT NULL,
+            sale_date TEXT NOT NULL
         )
     """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS sale_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sale_id INTEGER,
-            product_id INTEGER,
-            product_name TEXT,
-            quantity INTEGER,
-            price REAL,
-            subtotal REAL
+            invoice_no TEXT NOT NULL,
+            product_id INTEGER NOT NULL,
+            product_name TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            price REAL NOT NULL,
+            total REAL NOT NULL
         )
     """)
 
     conn.commit()
 
-    cur.execute("SELECT COUNT(*) FROM products")
-    count = cur.fetchone()[0]
+    # 100 products automatically add honge
+    count = cur.execute(
+        "SELECT COUNT(*) FROM products"
+    ).fetchone()[0]
 
     if count == 0:
 
         categories = [
-            "Men Shirt",
-            "Men T-Shirt",
-            "Men Pant",
             "Shalwar Kameez",
-            "Ladies Suit",
-            "Ladies Dress",
-            "Kids Wear",
+            "Kurta",
+            "Pant",
+            "Shirt",
+            "T-Shirt",
+            "Jeans",
+            "Waistcoat",
             "Jacket",
-            "Hoodie",
-            "Jeans"
+            "Kids Wear",
+            "Ladies Wear"
         ]
 
-        sizes = ["S", "M", "L", "XL", "XXL"]
+        sizes = [
+            "S",
+            "M",
+            "L",
+            "XL",
+            "XXL"
+        ]
 
         colors = [
             "Black",
@@ -94,12 +103,14 @@ def setup_database():
             "Blue",
             "Navy",
             "Grey",
-            "Red",
-            "Green",
             "Brown",
+            "Green",
+            "Maroon",
             "Cream",
-            "Maroon"
+            "Beige"
         ]
+
+        products = []
 
         for i in range(1, 101):
 
@@ -107,806 +118,648 @@ def setup_database():
             size = sizes[(i - 1) % len(sizes)]
             color = colors[(i - 1) % len(colors)]
 
-            price = 1000 + ((i * 250) % 5000)
-            stock = 20 + (i % 30)
+            if category == "Shalwar Kameez":
+                name = f"Safdar Shalwar Kameez {i:03d}"
+                price = 3500 + ((i % 8) * 250)
 
-            name = f"{category} {i}"
+            elif category == "Kurta":
+                name = f"Safdar Kurta {i:03d}"
+                price = 2200 + ((i % 7) * 200)
 
-            cur.execute("""
-                INSERT INTO products
-                (name, category, size, color, price, stock)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                name,
-                category,
-                size,
-                color,
-                price,
-                stock
-            ))
+            elif category == "Pant":
+                name = f"Safdar Pant {i:03d}"
+                price = 1800 + ((i % 6) * 200)
+
+            elif category == "Shirt":
+                name = f"Safdar Shirt {i:03d}"
+                price = 2000 + ((i % 7) * 200)
+
+            elif category == "T-Shirt":
+                name = f"Safdar T-Shirt {i:03d}"
+                price = 1200 + ((i % 6) * 150)
+
+            elif category == "Jeans":
+                name = f"Safdar Jeans {i:03d}"
+                price = 2800 + ((i % 6) * 250)
+
+            elif category == "Waistcoat":
+                name = f"Safdar Waistcoat {i:03d}"
+                price = 3000 + ((i % 7) * 300)
+
+            elif category == "Jacket":
+                name = f"Safdar Jacket {i:03d}"
+                price = 4500 + ((i % 7) * 400)
+
+            elif category == "Kids Wear":
+                name = f"Safdar Kids Wear {i:03d}"
+                price = 1000 + ((i % 6) * 150)
+
+            else:
+                name = f"Safdar Ladies Wear {i:03d}"
+                price = 2500 + ((i % 7) * 250)
+
+            stock = 10 + (i % 21)
+
+            products.append(
+                (
+                    name,
+                    category,
+                    size,
+                    color,
+                    price,
+                    stock
+                )
+            )
+
+        cur.executemany("""
+            INSERT INTO products
+            (name, category, size, color, price, stock)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, products)
 
         conn.commit()
 
     conn.close()
 
 
-setup_database()
+init_db()
 
-# =========================================================
-# SESSION
-# =========================================================
 
-if "login" not in st.session_state:
-    st.session_state.login = False
-
-if "role" not in st.session_state:
-    st.session_state.role = ""
+# =====================================================
+# SESSION STATE
+# =====================================================
 
 if "cart" not in st.session_state:
-    st.session_state.cart = []
+    st.session_state.cart = {}
 
-if "bill" not in st.session_state:
-    st.session_state.bill = ""
-
-# =========================================================
-# DATA FUNCTIONS
-# =========================================================
-
-def products_data():
-
-    conn = db()
-
-    df = pd.read_sql_query(
-        "SELECT * FROM products ORDER BY id",
-        conn
-    )
-
-    conn.close()
-
-    return df
+if "last_invoice" not in st.session_state:
+    st.session_state.last_invoice = None
 
 
-def sales_data():
+# =====================================================
+# FUNCTIONS
+# =====================================================
 
-    conn = db()
+def get_categories():
 
-    df = pd.read_sql_query(
-        "SELECT * FROM sales ORDER BY id DESC",
-        conn
-    )
+    conn = get_conn()
+
+    rows = conn.execute(
+        "SELECT DISTINCT category FROM products ORDER BY category"
+    ).fetchall()
 
     conn.close()
 
-    return df
+    return ["All"] + [row[0] for row in rows]
 
 
-def total_cart():
+def get_products(search="", category="All"):
 
-    return sum(
-        item["subtotal"]
-        for item in st.session_state.cart
-    )
+    conn = get_conn()
 
-
-# =========================================================
-# LOGIN
-# =========================================================
-
-def login_page():
-
-    st.title("👕 SAFDAR GARMENTS")
-    st.subheader("Point of Sale System")
-
-    st.divider()
-
-    left, center, right = st.columns(
-        [1, 2, 1]
-    )
-
-    with center:
-
-        st.markdown("### 🔐 Login")
-
-        username = st.text_input(
-            "Username"
-        )
-
-        password = st.text_input(
-            "Password",
-            type="password"
-        )
-
-        role = st.selectbox(
-            "Login As",
-            [
-                "Admin",
-                "Seller"
-            ]
-        )
-
-        if st.button(
-            "LOGIN",
-            use_container_width=True,
-            type="primary"
-        ):
-
-            if (
-                username == "safdar123"
-                and password == "009988"
-            ):
-
-                st.session_state.login = True
-                st.session_state.role = role
-
-                st.rerun()
-
-            else:
-
-                st.error(
-                    "❌ Wrong username or password"
-                )
-
-        st.info(
-            "Username: safdar123\n\n"
-            "Password: 009988"
-        )
-
-
-# =========================================================
-# ADD PRODUCT TO CART
-# =========================================================
-
-def add_cart(product_id, quantity):
-
-    conn = db()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT id, name, price, stock
+    query = """
+        SELECT
+            id,
+            name,
+            category,
+            size,
+            color,
+            price,
+            stock
         FROM products
-        WHERE id=?
-    """, (product_id,))
+        WHERE 1=1
+    """
 
-    product = cur.fetchone()
+    params = []
+
+    if search:
+
+        query += """
+            AND (
+                name LIKE ?
+                OR category LIKE ?
+                OR size LIKE ?
+                OR color LIKE ?
+            )
+        """
+
+        text = f"%{search}%"
+
+        params.extend([
+            text,
+            text,
+            text,
+            text
+        ])
+
+    if category != "All":
+
+        query += """
+            AND category = ?
+        """
+
+        params.append(category)
+
+    query += " ORDER BY id"
+
+    df = pd.read_sql_query(
+        query,
+        conn,
+        params=params
+    )
+
+    conn.close()
+
+    return df
+
+
+def make_invoice():
+
+    return (
+        "SG-" +
+        datetime.now().strftime(
+            "%Y%m%d%H%M%S%f"
+        )[:17]
+    )
+
+
+def clear_cart():
+
+    st.session_state.cart = {}
+
+
+def add_to_cart(product_id, quantity):
+
+    conn = get_conn()
+
+    product = conn.execute("""
+        SELECT
+            id,
+            name,
+            price,
+            stock
+        FROM products
+        WHERE id = ?
+    """, (product_id,)).fetchone()
 
     conn.close()
 
     if not product:
-        return False, "Product not found."
+
+        st.error("Product not found.")
+        return
 
     pid, name, price, stock = product
 
     if stock <= 0:
-        return False, "Product is out of stock."
 
-    current_qty = 0
+        st.warning("Product out of stock.")
+        return
 
-    for item in st.session_state.cart:
+    old_qty = (
+        st.session_state.cart
+        .get(pid, {})
+        .get("quantity", 0)
+    )
 
-        if item["product_id"] == pid:
-            current_qty = item["quantity"]
+    new_qty = old_qty + quantity
 
-    if current_qty + quantity > stock:
-
-        return False, (
-            f"Only {stock} pieces available."
-        )
-
-    found = False
-
-    for item in st.session_state.cart:
-
-        if item["product_id"] == pid:
-
-            item["quantity"] += quantity
-
-            item["subtotal"] = (
-                item["quantity"] *
-                item["price"]
-            )
-
-            found = True
-
-            break
-
-    if not found:
-
-        st.session_state.cart.append({
-            "product_id": pid,
-            "name": name,
-            "price": price,
-            "quantity": quantity,
-            "subtotal": price * quantity
-        })
-
-    return True, "Product added to cart."
-
-
-# =========================================================
-# POS / BILLING
-# =========================================================
-
-def pos_page():
-
-    st.header("🧾 New Sale / Billing")
-
-    products = products_data()
-
-    if products.empty:
+    if new_qty > stock:
 
         st.warning(
-            "No products available."
+            f"Only {stock} pieces available."
         )
 
         return
 
-    # -----------------------------------------------------
-    # CUSTOMER
-    # -----------------------------------------------------
+    st.session_state.cart[pid] = {
+        "name": name,
+        "price": float(price),
+        "quantity": new_qty
+    }
 
-    st.subheader("👤 Customer Information")
 
-    c1, c2 = st.columns(2)
+def cart_dataframe():
 
-    with c1:
+    rows = []
 
-        customer = st.text_input(
-            "Customer Name"
-        )
+    for pid, item in st.session_state.cart.items():
 
-        phone = st.text_input(
-            "Customer Phone"
-        )
+        rows.append({
+            "Product ID": pid,
+            "Product": item["name"],
+            "Price": item["price"],
+            "Qty": item["quantity"],
+            "Total": (
+                item["price"] *
+                item["quantity"]
+            )
+        })
 
-    with c2:
+    return pd.DataFrame(rows)
 
-        address = st.text_input(
-            "Customer Address"
-        )
 
-    st.divider()
+def save_sale(
+    customer,
+    discount,
+    payment
+):
 
-    # -----------------------------------------------------
-    # PRODUCT
-    # -----------------------------------------------------
+    if not st.session_state.cart:
+        return None
 
-    st.subheader("📦 Select Product")
+    conn = get_conn()
+    cur = conn.cursor()
 
-    product_list = []
+    invoice = make_invoice()
 
-    product_ids = {}
-
-    for _, row in products.iterrows():
-
-        text = (
-            f"{row['id']} | "
-            f"{row['name']} | "
-            f"{row['size']} | "
-            f"{row['color']} | "
-            f"Rs.{row['price']:.0f} | "
-            f"Stock: {row['stock']}"
-        )
-
-        product_list.append(text)
-
-        product_ids[text] = int(row["id"])
-
-    selected = st.selectbox(
-        "Product",
-        product_list
+    subtotal = sum(
+        item["price"] * item["quantity"]
+        for item in st.session_state.cart.values()
     )
 
-    product_id = product_ids[selected]
-
-    selected_product = products[
-        products["id"] == product_id
-    ].iloc[0]
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-
-        st.write(
-            "**Category:**",
-            selected_product["category"]
-        )
-
-    with col2:
-
-        st.write(
-            "**Size:**",
-            selected_product["size"]
-        )
-
-    with col3:
-
-        st.write(
-            "**Price:**",
-            f"Rs.{selected_product['price']:.0f}"
-        )
-
-    quantity = st.number_input(
-        "Quantity",
-        min_value=1,
-        max_value=max(
-            1,
-            int(selected_product["stock"])
-        ),
-        value=1
+    discount = max(
+        0.0,
+        float(discount)
     )
 
-    if st.button(
-        "➕ ADD TO CART",
-        use_container_width=True
-    ):
+    if discount > subtotal:
+        discount = subtotal
 
-        if selected_product["stock"] <= 0:
+    total = subtotal - discount
+
+    sale_date = datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    # Stock check
+    for pid, item in st.session_state.cart.items():
+
+        stock = cur.execute(
+            "SELECT stock FROM products WHERE id = ?",
+            (pid,)
+        ).fetchone()
+
+        if (
+            not stock
+            or stock[0] < item["quantity"]
+        ):
+
+            conn.rollback()
+            conn.close()
 
             st.error(
-                "Product is out of stock."
+                f"Not enough stock for {item['name']}"
+            )
+
+            return None
+
+    # Save sale
+    cur.execute("""
+        INSERT INTO sales
+        (
+            invoice_no,
+            customer,
+            subtotal,
+            discount,
+            total,
+            payment,
+            sale_date
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        invoice,
+        customer.strip() or "Walk-in Customer",
+        subtotal,
+        discount,
+        total,
+        payment,
+        sale_date
+    ))
+
+    # Save items + update stock
+    for pid, item in st.session_state.cart.items():
+
+        item_total = (
+            item["price"] *
+            item["quantity"]
+        )
+
+        cur.execute("""
+            INSERT INTO sale_items
+            (
+                invoice_no,
+                product_id,
+                product_name,
+                quantity,
+                price,
+                total
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            invoice,
+            pid,
+            item["name"],
+            item["quantity"],
+            item["price"],
+            item_total
+        ))
+
+        cur.execute("""
+            UPDATE products
+            SET stock = stock - ?
+            WHERE id = ?
+        """, (
+            item["quantity"],
+            pid
+        ))
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "invoice": invoice,
+        "customer": customer,
+        "subtotal": subtotal,
+        "discount": discount,
+        "total": total,
+        "payment": payment,
+        "date": sale_date
+    }
+
+
+# =====================================================
+# CSS
+# =====================================================
+
+st.markdown("""
+<style>
+
+.main-title {
+    font-size: 34px;
+    font-weight: 800;
+}
+
+.sub-title {
+    color: #666;
+    margin-bottom: 20px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
+# =====================================================
+# HEADER
+# =====================================================
+
+st.markdown(
+    '<div class="main-title">👕 SAFDAR GARMENTS</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="sub-title">'
+    'Complete Garments Point of Sale System'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+st.divider()
+
+
+# =====================================================
+# SIDEBAR
+# =====================================================
+
+st.sidebar.title("📋 POS MENU")
+
+page = st.sidebar.radio(
+    "Select Page",
+    [
+        "🛒 New Sale",
+        "📦 Inventory",
+        "📊 Dashboard",
+        "🧾 Sales History"
+    ]
+)
+
+st.sidebar.divider()
+
+st.sidebar.info(
+    "Safdar Garments POS\n\n"
+    "100 products automatically available."
+)
+
+if st.sidebar.button(
+    "🗑️ Clear Current Cart",
+    use_container_width=True
+):
+
+    clear_cart()
+    st.rerun()
+
+
+# =====================================================
+# NEW SALE
+# =====================================================
+
+if page == "🛒 New Sale":
+
+    st.header("🛒 New Sale")
+
+    left, right = st.columns(
+        [1.45, 1]
+    )
+
+    # -------------------------
+    # PRODUCTS
+    # -------------------------
+
+    with left:
+
+        st.subheader("Products")
+
+        search = st.text_input(
+            "🔎 Search Product",
+            placeholder=(
+                "Name, category, size or color"
+            )
+        )
+
+        categories = get_categories()
+
+        category = st.selectbox(
+            "Category",
+            categories
+        )
+
+        products = get_products(
+            search,
+            category
+        )
+
+        if products.empty:
+
+            st.warning(
+                "No products found."
             )
 
         else:
 
-            ok, message = add_cart(
-                product_id,
-                quantity
+            st.caption(
+                f"{len(products)} product(s) found"
             )
 
-            if ok:
+            for _, product in products.iterrows():
 
-                st.success(message)
+                with st.container(border=True):
 
-                st.rerun()
+                    c1, c2, c3 = st.columns(
+                        [3, 1.3, 1]
+                    )
 
-            else:
+                    with c1:
 
-                st.error(message)
+                        st.write(
+                            f"**{product['name']}**"
+                        )
 
-    # -----------------------------------------------------
+                        st.caption(
+                            f"Category: "
+                            f"{product['category']} | "
+                            f"Size: {product['size']} | "
+                            f"Color: {product['color']}"
+                        )
+
+                    with c2:
+
+                        st.write(
+                            f"**Rs. "
+                            f"{product['price']:,.0f}**"
+                        )
+
+                        st.caption(
+                            f"Stock: {product['stock']}"
+                        )
+
+                    with c3:
+
+                        qty = st.number_input(
+                            "Qty",
+                            min_value=1,
+                            max_value=max(
+                                1,
+                                int(product["stock"])
+                            ),
+                            value=1,
+                            key=(
+                                f"qty_"
+                                f"{int(product['id'])}"
+                            )
+                        )
+
+                        if st.button(
+                            "➕ Add",
+                            key=(
+                                f"add_"
+                                f"{int(product['id'])}"
+                            ),
+                            use_container_width=True
+                        ):
+
+                            add_to_cart(
+                                int(product["id"]),
+                                int(qty)
+                            )
+
+                            st.rerun()
+
+
+    # -------------------------
     # CART
-    # -----------------------------------------------------
+    # -------------------------
 
-    st.divider()
+    with right:
 
-    st.subheader("🛒 Shopping Cart")
+        st.subheader("🧺 Current Cart")
 
-    if len(st.session_state.cart) == 0:
+        df_cart = cart_dataframe()
 
-        st.info(
-            "Cart is empty."
-        )
+        if df_cart.empty:
 
-    else:
-
-        for index, item in enumerate(
-            st.session_state.cart
-        ):
-
-            col1, col2, col3, col4, col5 = st.columns(
-                [3, 1, 1, 1, 1]
+            st.info(
+                "Cart is empty."
             )
 
-            with col1:
-                st.write(
-                    f"**{item['name']}**"
+        else:
+
+            st.dataframe(
+                df_cart,
+                use_container_width=True,
+                hide_index=True
+            )
+
+            st.divider()
+
+            subtotal = sum(
+                item["price"] *
+                item["quantity"]
+                for item in
+                st.session_state.cart.values()
+            )
+
+            customer = st.text_input(
+                "Customer Name",
+                value="Walk-in Customer"
+            )
+
+            discount = st.number_input(
+                "Discount (Rs.)",
+                min_value=0.0,
+                max_value=float(subtotal),
+                value=0.0,
+                step=100.0
+            )
+
+            payment = st.selectbox(
+                "Payment Method",
+                [
+                    "Cash",
+                    "Card",
+                    "JazzCash",
+                    "EasyPaisa",
+                    "Bank Transfer"
+                ]
+            )
+
+            total = subtotal - discount
+
+            st.metric(
+                "Grand Total",
+                f"Rs. {total:,.0f}"
+            )
+
+            if st.button(
+                "✅ COMPLETE SALE",
+                type="primary",
+                use_container_width=True
+            ):
+
+                result = save_sale(
+                    customer,
+                    discount,
+                    payment
                 )
 
-            with col2:
-                st.write(
-                    f"Rs.{item['price']:.0f}"
-                )
+                if result:
 
-            with col3:
-                st.write(
-                    f"Qty: {item['quantity']}"
-                )
+                    st.session_state.last_invoice = result
 
-            with col4:
-                st.write(
-                    f"Rs.{item['subtotal']:.0f}"
-                )
+                    clear_cart()
 
-            with col5:
-
-                if st.button(
-                    "❌",
-                    key=f"remove_{index}"
-                ):
-
-                    st.session_state.cart.pop(
-                        index
+                    st.success(
+                        "Sale completed successfully!"
                     )
 
                     st.rerun()
-
-        st.divider()
-
-        st.metric(
-            "TOTAL",
-            f"Rs.{total_cart():,.0f}"
-        )
-
-        if st.button(
-            "🗑️ CLEAR CART",
-            use_container_width=True
-        ):
-
-            st.session_state.cart = []
-
-            st.rerun()
-
-    # -----------------------------------------------------
-    # PAYMENT
-    # -----------------------------------------------------
-
-    if len(st.session_state.cart) > 0:
-
-        st.divider()
-
-        st.subheader("💳 Payment")
-
-        payment = st.selectbox(
-            "Payment Method",
-            [
-                "Cash",
-                "JazzCash",
-                "Easypaisa",
-                "Credit Card"
-            ]
-        )
-
-        payment_number = ""
-
-        if payment == "JazzCash":
-
-            payment_number = st.text_input(
-                "JazzCash Number",
-                placeholder="03XXXXXXXXX",
-                max_chars=11
-            )
-
-            st.caption(
-                "Enter 11 digit JazzCash number."
-            )
-
-        elif payment == "Easypaisa":
-
-            payment_number = st.text_input(
-                "Easypaisa Number",
-                placeholder="03XXXXXXXXX",
-                max_chars=11
-            )
-
-            st.caption(
-                "Enter 11 digit Easypaisa number."
-            )
-
-        elif payment == "Credit Card":
-
-            payment_number = st.text_input(
-                "Last 4 Digits",
-                placeholder="1234",
-                max_chars=4
-            )
-
-            st.caption(
-                "Only last 4 digits are used."
-            )
-
-        # -------------------------------------------------
-        # COMPLETE SALE
-        # -------------------------------------------------
-
-        if st.button(
-            "✅ COMPLETE SALE",
-            use_container_width=True,
-            type="primary"
-        ):
-
-            # Customer check
-
-            if not customer.strip():
-
-                st.error(
-                    "Please enter customer name."
-                )
-
-                return
-
-            # Payment check
-
-            if payment in [
-                "JazzCash",
-                "Easypaisa"
-            ]:
-
-                if (
-                    len(payment_number) != 11
-                    or not payment_number.isdigit()
-                    or not payment_number.startswith("03")
-                ):
-
-                    st.error(
-                        "Please enter valid 11 digit mobile number."
-                    )
-
-                    return
-
-            if payment == "Credit Card":
-
-                if (
-                    len(payment_number) != 4
-                    or not payment_number.isdigit()
-                ):
-
-                    st.error(
-                        "Please enter last 4 digits."
-                    )
-
-                    return
-
-            # -------------------------------------------------
-            # SAVE SALE
-            # -------------------------------------------------
-
-            conn = db()
-            cur = conn.cursor()
-
-            invoice = (
-                "SG-"
-                + datetime.now().strftime(
-                    "%Y%m%d%H%M%S"
-                )
-            )
-
-            date = datetime.now().strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-
-            total = total_cart()
-
-            seller = st.session_state.role
-
-            # Check stock
-
-            for item in st.session_state.cart:
-
-                cur.execute(
-                    """
-                    SELECT stock
-                    FROM products
-                    WHERE id=?
-                    """,
-                    (item["product_id"],)
-                )
-
-                stock = cur.fetchone()[0]
-
-                if stock < item["quantity"]:
-
-                    conn.close()
-
-                    st.error(
-                        f"Not enough stock for {item['name']}"
-                    )
-
-                    return
-
-            # Sale insert
-
-            cur.execute(
-                """
-                INSERT INTO sales
-                (
-                    invoice,
-                    customer,
-                    phone,
-                    address,
-                    payment,
-                    payment_number,
-                    total,
-                    seller,
-                    date
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    invoice,
-                    customer,
-                    phone,
-                    address,
-                    payment,
-                    payment_number,
-                    total,
-                    seller,
-                    date
-                )
-            )
-
-            sale_id = cur.lastrowid
-
-            # Items
-
-            for item in st.session_state.cart:
-
-                cur.execute(
-                    """
-                    INSERT INTO sale_items
-                    (
-                        sale_id,
-                        product_id,
-                        product_name,
-                        quantity,
-                        price,
-                        subtotal
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        sale_id,
-                        item["product_id"],
-                        item["name"],
-                        item["quantity"],
-                        item["price"],
-                        item["subtotal"]
-                    )
-                )
-
-                # Stock decrease
-
-                cur.execute(
-                    """
-                    UPDATE products
-                    SET stock = stock - ?
-                    WHERE id=?
-                    """,
-                    (
-                        item["quantity"],
-                        item["product_id"]
-                    )
-                )
-
-            conn.commit()
-            conn.close()
-
-            # -------------------------------------------------
-            # BILL
-            # -------------------------------------------------
-
-            bill = ""
-
-            bill += "====================================\n"
-            bill += "          SAFDAR GARMENTS\n"
-            bill += "             INVOICE\n"
-            bill += "====================================\n"
-            bill += f"Invoice: {invoice}\n"
-            bill += f"Date: {date}\n"
-            bill += f"Seller: {seller}\n"
-            bill += "------------------------------------\n"
-            bill += f"Customer: {customer}\n"
-            bill += f"Phone: {phone}\n"
-            bill += f"Address: {address}\n"
-            bill += "------------------------------------\n"
-
-            for item in st.session_state.cart:
-
-                bill += (
-                    f"{item['name']}\n"
-                    f"{item['quantity']} x "
-                    f"Rs.{item['price']:.0f}"
-                    f" = Rs.{item['subtotal']:.0f}\n"
-                )
-
-            bill += "------------------------------------\n"
-            bill += f"Payment: {payment}\n"
-
-            if payment_number:
-
-                bill += (
-                    f"Payment Number/Ref: "
-                    f"{payment_number}\n"
-                )
-
-            bill += "------------------------------------\n"
-            bill += f"TOTAL: Rs.{total:.0f}\n"
-            bill += "====================================\n"
-            bill += "             THANK YOU!\n"
-            bill += "        SAFDAR GARMENTS\n"
-            bill += "====================================\n"
-
-            st.session_state.bill = bill
-
-            st.session_state.cart = []
-
-            st.success(
-                f"✅ Sale Completed! Invoice: {invoice}"
-            )
-
-    # -----------------------------------------------------
-    # DOWNLOAD BILL
-    # -----------------------------------------------------
-
-    if st.session_state.bill:
-
-        st.divider()
-
-        st.subheader("🧾 Latest Bill")
-
-        st.text(
-            st.session_state.bill
-        )
-
-        st.download_button(
-            "⬇️ DOWNLOAD BILL",
-            data=st.session_state.bill,
-            file_name="safdar_invoice.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
-
-
-# =========================================================
-# ADMIN DASHBOARD
-# =========================================================
-
-def admin_dashboard():
-
-    st.header("👑 ADMIN DASHBOARD")
-
-    products = products_data()
-    sales = sales_data()
-
-    product_count = len(products)
-
-    stock_count = (
-        int(products["stock"].sum())
-        if not products.empty
-        else 0
-    )
-
-    invoice_count = len(sales)
-
-    revenue = (
-        float(sales["total"].sum())
-        if not sales.empty
-        else 0
-    )
-
-    # -----------------------------------------------------
-    # METRICS
-    # -----------------------------------------------------
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    with c1:
-
-        st.metric(
-            "📦 Products",
-            product_count
-        )
-
-    with c2:
-
-        st.metric(
-            "📊 Stock",
-            stock_count
-        )
-
-    with c3:
-
-        st.metric(
-            "🧾 Invoices",
-            invoice_count
-        )
-
-    with c4:
-
-        st.metric(
-            "💰 Revenue",
-            f"Rs.{revenue:,.0f}"
-        )
-
-    st.divider()
-
-    # ----------------------------------
